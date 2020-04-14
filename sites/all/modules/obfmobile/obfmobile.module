@@ -1,0 +1,394 @@
+<?php
+
+/**
+ * Implementation of hook_services_resources()
+ */
+function obfmobile_services_resources() {
+  return array(
+    'obfmobile_user' => array(
+      'operations' => array(
+        'create' => array(
+          'help' => 'Create an obfmobile user',
+          'callback' => '_obfmobile_user_resource_create',
+          'access callback' => '_user_resource_access',
+          'access arguments' => array('create'),
+          'access arguments append' => FALSE,
+          'args' => array(
+            array(
+              'name' => 'account',
+              'type' => 'array',
+              'description' => 'The user object',
+              'source' => 'data',
+              'optional' => FALSE,
+            ),
+          ),
+        ),
+
+        'update' => array(
+          'help' => 'Update a user',
+          'callback' => '_obfmobile_user_resource_update',
+          'file' => array('type' => 'inc', 'module' => 'services', 'name' => 'resources/user_resource'),
+          'access callback' => '_user_resource_access',
+          'access arguments' => array('update'),
+          'access arguments append' => TRUE,
+          'args' => array(
+            array(
+              'name' => 'uid',
+              'type' => 'int',
+              'description' => 'Unique identifier for this user',
+              'source' => array('path' => 0),
+              'optional' => FALSE,
+            ),
+            array(
+              'name' => 'data',
+              'type' => 'array',
+              'description' => 'The user object with updated information',
+              'source' => 'data',
+              'optional' => FALSE,
+            ),
+          ),
+        ),
+      ),
+      'actions' => array(
+        'login' => array(
+          'help' => 'Login a user for a new session and returns the user\'s observations',
+          'callback' => '_obfmobile_user_resource_login',
+          'args' => array(
+            array(
+              'name' => 'username',
+              'type' => 'string',
+              'description' => 'A valid username',
+              'source' => array('data' => 'username'),
+              'optional' => FALSE,
+            ),
+            array(
+              'name' => 'password',
+              'type' => 'string',
+              'description' => 'A valid password',
+              'source' => array('data' => 'password'),
+              'optional' => FALSE,
+            ),
+          ),
+          'access callback' => 'services_access_menu',
+          'file' => array('type' => 'inc', 'module' => 'services', 'name' => 'resources/user_resource'),
+        ),
+      ),
+      'relationships' => array(
+        'obs_by_uid' => array(
+          'help'   => t('Observations by user.'),
+          'access callback' => '_user_resource_access',
+          'access arguments' => array('view'),
+          'access arguments append' => TRUE,
+          'callback' => 'obs_by_uid',
+          'args'     => array(
+            array(
+              'name' => 'uid',
+              'optional' => FALSE,
+              'source' => array('path' => 0),
+              'type' => 'int',
+              'description' => 'The uid of the user whose observations we are getting',
+            ),
+            array(
+              'name' => 'file_contents',
+              'type' => 'int',
+              'description'  => t('To return file contents or not.'),
+              'source' => array('path' => 2),
+              'optional' => TRUE,
+              'default value' => TRUE,
+            ),
+            array(
+              'name'         => 'image_styles',
+              'type'         => 'int',
+              'description'  => t('To return image styles or not.'),
+              'source'       => array('path' => 3),
+              'optional'     => TRUE,
+              'default value' => FALSE,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Create a new user.
+ *
+ * This function uses drupal_form_submit() and as such expects all input to match
+ * the submitting form in question.
+ *
+ * @param $account
+ *   A object containing account information. The $account object should
+ *   contain, at minimum, the following properties:
+ *     - name (user name)
+ *     - mail (email address)
+ *     - pass (plain text unencrypted password)
+ *
+ *   These properties can be passed but are optional
+ *     - status (0 for blocked, otherwise will be active by default)
+ *     - notify (1 to notify user of new account, will not notify by default)
+ *
+ *  Roles can be passed in a roles property which is an associative
+ *  array formatted with '<role id>' => '<role id>', not including
+ *  the authenticated user role, which is given by default.
+ *
+ * @return
+ *   The user object of the newly created user.
+ */
+function _obfmobile_user_resource_create($account) {
+  $_account = $account;
+  // Adds backwards compatability with regression fixed in #1083242
+  $account = _services_arg_value($account, 'account');
+//var_dump($_account);
+//var_dump($account);
+  // Load the required includes for saving profile information
+  // with drupal_form_submit().
+  module_load_include('inc', 'user', 'user.pages');
+
+  // Register a new user.
+  $form_state['values'] = $account;
+
+  // Determine the password(s). Passwords may not be available as this callback
+  // is used for registration as well.
+  $pass1 = '';
+  $pass2 = '';
+  if (isset($account['pass'])) {
+    // For legacy usage, passwords come in as a single string. To match the
+    // actual form state value keys used by Drupal, we also can collect two
+    // passwords via an array.
+    if (is_array($account['pass'])) {
+      $pass1 = $account['pass']['pass1'];
+      $pass2 = $account['pass']['pass2'];
+    }
+    else {
+      $pass1 = $account['pass'];
+      $pass2 = $account['pass'];
+    }
+  }
+  $form_state['values']['pass'] = array(
+    'pass1' => $pass1,
+    'pass2' => $pass2
+  );
+  // Set the form state op.
+  $form_state['values']['op'] = variable_get('services_user_create_button_resource_create', t('Create new account'));
+
+  // execute the register form
+  $form_state['programmed_bypass_access_check'] = FALSE;
+  drupal_form_submit('user_register_form', $form_state);
+  // find and store the new user into the form_state
+  if(isset($form_state['values']['uid'])) {
+    $form_state['user'] = user_load($form_state['values']['uid']);
+  }
+
+  // Error if needed.
+  if ($errors = form_get_errors()) {
+    if(array_key_exists('mail',$errors)){
+      return services_error('email_exists', 406, 'email_exists');
+    }else{
+      return services_error(implode(" ", $errors), 406, array('form_errors' => $errors));
+    }
+  }
+  else {
+    $user = array('uid' => $form_state['user']->uid);
+
+    // need to update user to add fisrtname and lastname
+    unset($_account['name']);
+    unset($_account['mail']);
+    unset($_account['pass']);
+    unset($_account['pass2']);
+    _user_resource_update($user['uid'], $_account);
+
+
+    if ($uri = services_resource_uri(array('user', $user['uid']))) {
+      $user['uri'] = $uri;
+    }
+    //add role observateur
+    addRoleObservateur($user['uid']);
+    
+    _user_resource_update_services_user($user['uid'], time());
+
+    return $user;
+  }
+}
+
+/**
+ * Login a user using the specified credentials.
+ *
+ * Note this will transfer a plaintext password.
+ *
+ * @param $username
+ *   Username to be logged in.
+ * @param $password
+ *   Password, must be plain text and not hashed.
+ *
+ * @return
+ *   A valid session object.
+ */
+function _obfmobile_user_resource_login($username, $password) {
+  global $user;
+
+   //If an email was used, get the username from that
+  if (valid_email_address($username)){
+    $account = user_load_by_mail($username);
+    $username = $account->name;
+  } else {
+    $username = $username;
+  }
+
+  if ($user->uid) {
+    // user is already logged in
+    return services_error(t('Already logged in as @user.', array('@user' => $user->name)), 409);
+  }
+
+  // Check if account is active.
+  if (user_is_blocked($username)) {
+    return services_error(t('The username %name has not been activated or is blocked.', array('%name' => $username)), 403);
+  }
+
+  // Emulate drupal native flood control: check for flood condition.
+  $flood_state = array();
+  if (variable_get('services_flood_control_enabled', TRUE)) {
+    $flood_state = _user_resource_flood_control_precheck($username);
+  }
+
+  // Only authenticate if a flood condition was not detected.
+  if (empty($flood_state['flood_control_triggered'])) {
+    $uid = user_authenticate($username, $password);
+  }
+  else {
+    $uid = FALSE;
+  }
+
+  // Emulate drupal native flood control: register flood event, and throw error
+  // if a flood condition was previously detected
+  if (variable_get('services_flood_control_enabled', TRUE)) {
+    $flood_state['uid'] = $uid;
+    _user_resource_flood_control_postcheck($flood_state);
+  }
+
+  if ($uid) {
+    $user = user_load($uid);
+    if ($user->uid) {
+      user_login_finalize();
+
+      $return = new stdClass();
+      $return->sessid = session_id();
+      $return->session_name = session_name();
+      $return->token = drupal_get_token('services');
+
+      $account = clone $user;
+
+      services_remove_user_data($account);
+
+      $return->user = $account;
+
+      $return->count_obs = count_obs_by_uid($user->uid);
+
+      $return->obs = obs_by_uid($user->uid);
+      
+      return $return;
+    }
+  }
+  watchdog('user', 'Invalid login attempt for %username.', array('%username' => $username));
+  return services_error(t('Wrong username or password.'), 401);
+}
+
+function count_obs_by_uid($uid){
+    $obsByUid = db_select('node', 'n')
+    ->fields('n')
+    ->condition('uid', $uid,'=')
+    ->condition('type','observation','=')
+    ->execute();
+
+    $count_obs = $obsByUid->rowCount();
+  return $count_obs;
+}
+
+function tmps_foret_by_uid($uid){
+  //field_time_forest_value
+    $query = db_select('field_data_field_time_forest', 'tf')
+    ->fields('tf',array('field_time_forest_value'))
+    ->condition('entity_id', $uid,'=')
+    ->execute();
+
+    $tmpsByUid = $query -> fetchField();
+  
+  return $tmpsByUid;
+}
+
+function obs_by_uid($uid){
+
+    $query = db_select('node', 'n');
+    $query->fields('n', array('title'));
+    $query->condition('n.uid', $uid,'=');
+    $query->condition('n.type','observation','=');
+    $query->join('field_data_field_observation_id_mission', 'm', 'n.nid = m.entity_id');
+    $query->fields('m', array('field_observation_id_mission_value'));
+    $query->join('field_data_field_observation_code_dept', 'dept', 'n.nid = dept.entity_id');
+    $query->fields('dept', array('field_observation_code_dept_value'));
+    $query->join('field_data_field_observation_timestamp', 'ot', 'n.nid = ot.entity_id');
+    $query->fields('ot', array('field_observation_timestamp_value'));
+    $query->join('field_data_field_observation_image', 'foi', 'n.nid = foi.entity_id');
+    $query->fields('foi', array('field_observation_image_fid','entity_id'));
+
+    $result = $query->execute();
+    $record = db_query($result)->fetchAll();
+
+    $obs;
+    foreach ($record as $k => $v) {
+      $files = _file_resource_retrieve($v->field_observation_image_fid, true, false);
+      $url_files[$v->entity_id]['photos'][] = $files->uri_full;
+
+      $elem[$v->entity_id][$k] = $v;
+
+      foreach ($url_files as $key => $value) {
+        if($key === (int) $v->entity_id){
+           $result = (array) $v;
+
+          $obs[$key] = array_merge_recursive($result, $value);
+
+          $obs[$key]['dept'] = $obs[$key]['field_observation_code_dept_value'];
+          $obs[$key]['mission'] = $obs[$key]['field_observation_id_mission_value'];
+          $obs[$key]['timestamp'] = $obs[$key]['field_observation_timestamp_value'];
+          unset($obs[$key]["field_observation_code_dept_value"]);
+          unset($obs[$key]["field_observation_image_fid"]);
+          unset($obs[$key]["field_observation_id_mission_value"]);
+          unset($obs[$key]["field_observation_timestamp_value"]);
+          unset($obs[$key]["title"]);
+        }
+      }
+    }
+    return $obs;
+}
+
+function _obfmobile_user_resource_update($uid, $account){
+  if ($uid) {
+    $serverTf = _get_time_forest($uid);
+    $localTf = $account['field_time_forest']['und'][0]["value"];
+    $account['field_time_forest']['und'][0]["value"] = intval($serverTf) + intval($localTf);
+
+    return _user_resource_update($uid, $account);
+  }
+}
+
+function _get_time_forest($uid){
+  $user = user_load($uid);
+  if (!empty($user)) {
+    return $user->field_time_forest['und'][0]["value"];
+  }
+}
+
+function addRoleObservateur($userUid){
+  $role_name = 'observateur';
+  $user = user_load($userUid);
+  //retrouve les roles du site
+  $roles = user_roles(TRUE);
+  //vérifie si le role demandé existe
+  $rid = array_search($role_name, $roles);
+  if ($rid != FALSE) {
+    $role = user_role_load_by_name("observateur");
+    $user->roles = $user->roles + array($role->rid => $role->name);
+    user_save($user);
+  }
+
+};

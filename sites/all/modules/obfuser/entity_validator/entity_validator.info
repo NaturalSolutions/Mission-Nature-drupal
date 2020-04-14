@@ -1,0 +1,25 @@
+name = Entity validator
+description = "Validating entities or objects."
+core = 7.x
+dependencies[] = ctools
+dependencies[] = entity
+
+; Handlers
+files[] = includes/ValidateInterface.php
+files[] = includes/ObjectValidateBase.php
+files[] = includes/EntityValidateBase.php
+files[] = includes/EntityValidateInterface.php
+files[] = includes/FieldsInfo.php
+
+; Exceptions
+files[] = exceptions/EntityValidatorException.php
+
+; Tests
+files[] = tests/EntityValidatorTestCase.test
+
+; Information added by Drupal.org packaging script on 2017-06-22
+version = "7.x-1.2"
+core = "7.x"
+project = "entity_validator"
+datestamp = "1498141444"
+
