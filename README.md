@@ -1,5 +1,6 @@
 # Mission Nature drupal7+vues sql postgres
-Drupal 7 avec SGBS postgreSQL
+Drupal 7 avec SGBD postgreSQL
+
 ## Mise à jour de drupal en prod
 (cf: https://www.drupal.org/docs/7/update/core-option-1)
 
