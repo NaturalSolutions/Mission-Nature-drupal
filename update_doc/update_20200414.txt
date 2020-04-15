@@ -2,13 +2,13 @@ Créer les nouveau champs dans drupal pour la précision de géolocalisation
 Aller dans structure / observation
 
 Ajouter un champ de type timestamp
-nom du champ : field_geolocation_timestamp
+nom du champ : geolocation_timestamp
 type Date (ISO format), champ texte, Date Entry > Format d'entrée personnalisé > custom input format U
 
 Ajouter un champ de type texte
-nom du champ : field_geolocation_provider
+nom du champ : geolocation_provider
 string, defaut "unknown", 50 caractères
 
 Ajouter un champ de type "accuracy" (précision)
-nom du champ : field_geolocation_accuracy
+nom du champ : geolocation_accuracy
 type Decimal, defaut 0, 10 chiffres max ave 2 chiffres derrière la virgule
