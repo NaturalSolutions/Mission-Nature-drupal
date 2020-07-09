@@ -25,8 +25,9 @@ Renommer si nécessaire le dossier en www
 
 - Si les pages ne s'affichent pas vérifier si le .htaccess correspond à la sauvegarde dans le www-old
 
-
-## MISE à jour des vues sql
+## Vues SQL
+v_file_obs et v_all_obs se trouvent dans le dossier data.
+### MISE à jour des vues sql
 Vérifiez les privilèges à chaque mise à jour des vues v_file_obs et v_all_obs
 
 ## TODO
